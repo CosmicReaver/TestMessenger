@@ -2,9 +2,8 @@ import socket
 import os
 import threading
 import tkinter as tk
-from tkinter import scrolledtext, filedialog, messagebox, ttk
+from tkinter import scrolledtext, filedialog, messagebox
 import time
-from crypto_utils import encrypt_file
 
 SERVER_HOST = '192.168.50.191'  # Default server IP
 PORT = 65432
@@ -21,9 +20,7 @@ def connect_to_server():
             client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client_socket.connect((SERVER_HOST, PORT))
             chat_box.insert(tk.END, "✅ Connected to server!\n", "success")
-            
-            # Show instruction for first-time users
-            chat_box.insert(tk.END, "ℹ️ Please type and send your name first before chatting.\n", "info")
+            chat_box.insert(tk.END, "ℹ️ Type your name and send it as your first message.\n", "info")
 
             threading.Thread(target=receive_messages, daemon=True).start()
             reconnect_attempts = 0  # Reset on success
@@ -32,6 +29,7 @@ def connect_to_server():
             reconnect_attempts += 1
             time.sleep(3)  # Retry delay
             chat_box.insert(tk.END, f"⚠️ Connection failed. Retrying... ({reconnect_attempts}/5)\n", "error")
+    
     chat_box.insert(tk.END, "❌ Could not connect to server. Check your network.\n", "error")
 
 def receive_messages():
@@ -52,7 +50,7 @@ def receive_messages():
             break
 
 def send_message(event=None):
-    """Send a text message to the server."""
+    """Send a text message to the server (triggered by button or Enter key)."""
     message = message_entry.get().strip()
     if message and client_socket:
         timestamp = time.strftime("[%H:%M:%S] ")
@@ -76,11 +74,10 @@ chat_box.tag_config("client", foreground="black")
 
 message_entry = tk.Entry(root, width=50)
 message_entry.pack(pady=5)
-message_entry.bind("<Return>", send_message)  # Pressing Enter sends the message
+message_entry.bind("<Return>", send_message)  # Pressing Enter sends message
 
 send_button = tk.Button(root, text="Send", command=send_message, width=20, bg="#4CAF50", fg="white")
 send_button.pack(pady=5)
 
 connect_to_server()
-
 root.mainloop()
