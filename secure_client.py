@@ -12,20 +12,25 @@ BUFFER_SIZE = 4096
 PASSWORD = "strongpassword"  # Encryption key
 client_socket = None
 client_name = ""
+reconnect_attempts = 0  # Track retries
 
 def connect_to_server():
-    """Attempt to connect to the server, retrying if unavailable, silently."""
-    global client_socket
-    while True:
+    """Attempt to connect to the server, retrying with limits."""
+    global client_socket, reconnect_attempts
+    while reconnect_attempts < 5:  # Retry up to 5 times
         try:
             client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client_socket.connect((SERVER_HOST, PORT))
             chat_box.insert(tk.END, "✅ Connected to server!\n", "success")
             client_socket.send(client_name.encode())
             threading.Thread(target=receive_messages, daemon=True).start()
-            break
-        except:
-            time.sleep(3)  # Retry after 3 seconds silently
+            reconnect_attempts = 0  # Reset on success
+            return
+        except Exception as e:
+            reconnect_attempts += 1
+            time.sleep(3)  # Retry delay
+            chat_box.insert(tk.END, f"⚠️ Connection failed. Retrying... ({reconnect_attempts}/5)\n", "error")
+    chat_box.insert(tk.END, "❌ Could not connect to server. Check your network.\n", "error")
 
 def receive_messages():
     """Handle incoming messages from the server."""
@@ -46,8 +51,8 @@ def receive_messages():
 
 def send_message():
     """Send a text message to the server."""
-    message = message_entry.get()
-    if message:
+    message = message_entry.get().strip()
+    if message and client_socket:
         timestamp = time.strftime("[%H:%M:%S] ")
         chat_box.insert(tk.END, f"{timestamp}You: {message}\n", "self")
         client_socket.send(f"MSG:{timestamp}{client_name}: {message}".encode())
@@ -56,22 +61,35 @@ def send_message():
 def send_file():
     """Encrypt and send a file to the server with progress."""
     filename = filedialog.askopenfilename()
-    if filename:
-        encrypted_file = filename + ".enc"
-        encrypt_file(filename, encrypted_file, PASSWORD)
-        file_size = os.path.getsize(encrypted_file)
+    if not filename or not client_socket:
+        return
+
+    encrypted_file = filename + ".enc"
+    encrypt_file(filename, encrypted_file, PASSWORD)
+    file_size = os.path.getsize(encrypted_file)
+
+    try:
         client_socket.send(f"FILE:{os.path.basename(encrypted_file)}:{file_size}".encode())
         ack = client_socket.recv(1024).decode()
         if ack != "READY":
             chat_box.insert(tk.END, "❌ Server not ready for file transfer.\n", "error")
             return
-        progress_win = tk.Toplevel(root)
-        progress_win.title("Sending File")
-        progress_label = tk.Label(progress_win, text=f"Sending {os.path.basename(filename)}")
-        progress_label.pack()
-        progress_bar = ttk.Progressbar(progress_win, length=300, mode='determinate')
-        progress_bar.pack()
-        with open(encrypted_file, "rb") as f:
+
+        threading.Thread(target=send_file_thread, args=(encrypted_file, file_size)).start()
+    except Exception as e:
+        chat_box.insert(tk.END, f"❌ Error sending file: {e}\n", "error")
+
+def send_file_thread(file_path, file_size):
+    """Handles file sending in a background thread."""
+    progress_win = tk.Toplevel(root)
+    progress_win.title("Sending File")
+    progress_label = tk.Label(progress_win, text=f"Sending {os.path.basename(file_path)}")
+    progress_label.pack()
+    progress_bar = ttk.Progressbar(progress_win, length=300, mode='determinate')
+    progress_bar.pack()
+
+    try:
+        with open(file_path, "rb") as f:
             remaining = file_size
             while remaining:
                 chunk = f.read(BUFFER_SIZE)
@@ -81,8 +99,13 @@ def send_file():
                 remaining -= len(chunk)
                 progress_bar['value'] = ((file_size - remaining) / file_size) * 100
                 root.update_idletasks()
+
         progress_win.destroy()
-        chat_box.insert(tk.END, f"✅ File '{filename}' sent successfully.\n", "success")
+        chat_box.insert(tk.END, f"✅ File '{os.path.basename(file_path)}' sent successfully.\n", "success")
+        client_socket.send("FILE_COMPLETE".encode())  # Notify server
+    except Exception as e:
+        chat_box.insert(tk.END, f"❌ File send failed: {e}\n", "error")
+        progress_win.destroy()
 
 def update_server_address():
     """Change the server address via GUI and reconnect."""
@@ -121,9 +144,4 @@ file_button = tk.Button(root, text="Send File", command=send_file, width=20, bg=
 file_button.pack(pady=5)
 
 change_server_button = tk.Button(root, text="Change Server", command=update_server_address, width=20, bg="#FF9800", fg="white")
-change_server_button.pack(pady=5)
-
-# Connect to server automatically
-threading.Thread(target=connect_to_server, daemon=True).start()
-
-root.mainloop()
+change_server_button.pack(pady=5
