@@ -5,10 +5,10 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 # 🔹 URLs for hosted files
-UPDATE_URL = "https://github.com/CosmicReaver/TestMessenger/main/TestMessenger.exe"
+UPDATE_URL = "https://github.com/CosmicReaver/TestMessenger/releases/latest/download/TestMessenger.exe"
 VERSION_URL = "https://raw.githubusercontent.com/CosmicReaver/TestMessenger/main/version.txt"
-LOCAL_VERSION_FILE = "version.txt"  
-APP_EXECUTABLE = "TestMessenger.exe"
+LOCAL_VERSION_FILE = "version.txt"
+APP_EXECUTABLE = os.path.join(os.getcwd(), "TestMessenger.exe")
 
 # GUI Updater Class
 class UpdaterApp:
@@ -60,14 +60,13 @@ class UpdaterApp:
             else:
                 self.status_label.config(text="✅ You have the latest version")
                 self.update_button.config(state=tk.DISABLED)
-                
-                # 🚀 Launch the app since it's already updated
-                self.launch_application()
+                # 🚀 Auto-launch the application if no update is needed
+                self.root.after(1000, self.launch_application)
 
         except requests.RequestException as e:
             self.status_label.config(text="⚠️ Failed to check updates")
             messagebox.showerror("Update Error", f"Could not check for updates.\n{e}")
-            self.launch_application()  # 🚀 Still launch the app even if check fails
+            self.root.after(1000, self.launch_application)  # Still launch the app
 
     def download_update(self):
         """Downloads the update, replaces the old file, and auto-launches the app."""
@@ -107,10 +106,14 @@ class UpdaterApp:
 
     def launch_application(self):
         """Launches the main application and closes the updater."""
-        self.status_label.config(text="🚀 Launching application...")
-        self.root.update()
-        subprocess.Popen([APP_EXECUTABLE], shell=True)
-        self.root.quit()
+        exe_path = os.path.abspath(APP_EXECUTABLE)
+        if os.path.exists(exe_path):
+            self.status_label.config(text="🚀 Launching application...")
+            self.root.update()
+            subprocess.Popen([exe_path], shell=True)
+            self.root.quit()
+        else:
+            messagebox.showerror("Launch Error", f"Could not find the application at:\n{exe_path}")
 
 # Run the GUI
 if __name__ == "__main__":
