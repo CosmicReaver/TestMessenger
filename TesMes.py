@@ -1,25 +1,26 @@
 import subprocess
 import requests
 import os
+import sys
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox
 
 # 🔹 URLs for hosted files
-UPDATE_URL = "https://raw.githubusercontent.com/CosmicReaver/TestMessenger/main/TestMessenger.exe"
-VERSION_URL = "https://raw.githubusercontent.com/CosmicReaver/TestMessenger/main/version.txt"
-LOCAL_VERSION_FILE = "version.txt"
-APP_EXECUTABLE = os.path.join(os.getcwd(), "secure_client.exe")
+UPDATER_URL = "https://raw.githubusercontent.com/CosmicReaver/TestMessenger/main/updater.py"
+VERSION_URL = "https://raw.githubusercontent.com/CosmicReaver/TestMessenger/main/updater_version.txt"
+LOCAL_VERSION_FILE = "updater_version.txt"
+UPDATER_SCRIPT = os.path.join(os.getcwd(), "updater.py")
 
 # GUI Updater Class
 class UpdaterApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("App Updater")
+        self.root.title("Updater")
         self.root.geometry("350x200")
         self.root.resizable(False, False)
 
         # Title
-        tk.Label(root, text="🔄 App Updater", font=("Arial", 14, "bold")).pack(pady=10)
+        tk.Label(root, text="🔄 Updater", font=("Arial", 14, "bold")).pack(pady=10)
 
         # Status Label
         self.status_label = tk.Label(root, text="Checking for updates...", font=("Arial", 10))
@@ -58,31 +59,26 @@ class UpdaterApp:
                 self.status_label.config(text=f"🔔 New version available: {latest_version}")
                 self.update_button.config(state=tk.NORMAL)
             else:
-                self.status_label.config(text="✅ You have the latest version")
+                self.status_label.config(text="✅ Updater is up to date")
                 self.update_button.config(state=tk.DISABLED)
-                self.root.after(1000, self.launch_application)
 
         except requests.RequestException as e:
             self.status_label.config(text="⚠️ Failed to check updates")
             messagebox.showerror("Update Error", f"Could not check for updates.\n{e}")
-            self.root.after(1000, self.launch_application)
 
     def download_update(self):
-        """Downloads the update, replaces the old file, and auto-launches the app."""
+        """Downloads the update and replaces the old updater script."""
         self.status_label.config(text="Downloading update...")
         self.progress["value"] = 0
         self.root.update()
 
         try:
-            response = requests.get(UPDATE_URL, stream=True, timeout=10)
+            response = requests.get(UPDATER_URL, stream=True, timeout=10)
             response.raise_for_status()
             total_size = int(response.headers.get("content-length", 0))
             downloaded_size = 0
 
-            if os.path.exists(APP_EXECUTABLE):
-                os.chmod(APP_EXECUTABLE, 0o777)  # Ensure file permissions
-
-            with open(APP_EXECUTABLE, "wb") as f:
+            with open(UPDATER_SCRIPT, "wb") as f:
                 for chunk in response.iter_content(chunk_size=1024):
                     if chunk:
                         f.write(chunk)
@@ -90,36 +86,29 @@ class UpdaterApp:
                         self.progress["value"] = (downloaded_size / total_size) * 100
                         self.root.update()
 
+            # Fetch latest version number and update local version file
             latest_version = requests.get(VERSION_URL, timeout=5).text.strip()
             with open(LOCAL_VERSION_FILE, "w") as f:
                 f.write(latest_version)
 
             self.status_label.config(text="✅ Update successful!")
-            messagebox.showinfo("Update Complete", "The application has been updated successfully.")
-            self.launch_application()
+            messagebox.showinfo("Update Complete", "Updater has been updated. Restarting...")
+
+            # 🚀 Relaunch the updated updater script
+            self.relaunch_updater()
 
         except requests.RequestException as e:
             self.status_label.config(text="⚠️ Update failed!")
             messagebox.showerror("Download Error", f"Could not download the update.\n{e}")
-            self.launch_application()
 
-    def launch_application(self):
-        """Prompt for name before launching the main application."""
-        exe_path = os.path.abspath(APP_EXECUTABLE)
-
-        if os.path.exists(exe_path):
-            user_name = simpledialog.askstring("Enter Name", "Please enter your name:")
-
-            if user_name:
-                self.status_label.config(text=f"🚀 Launching {user_name}'s application...")
-                self.root.update()
-                
-                subprocess.Popen([exe_path, user_name], shell=True)
-                self.root.quit()
-            else:
-                messagebox.showwarning("Name Required", "You must enter a name to proceed!")
+    def relaunch_updater(self):
+        """Restarts the updater script using Python."""
+        script_path = os.path.abspath(UPDATER_SCRIPT)
+        if os.path.exists(script_path):
+            self.root.quit()
+            subprocess.Popen([sys.executable, script_path], shell=True)  # Restart using Python
         else:
-            messagebox.showerror("Launch Error", f"Could not find the application at:\n{exe_path}")
+            messagebox.showerror("Launch Error", f"Could not find the updater script:\n{script_path}")
 
 # Run the GUI
 if __name__ == "__main__":
