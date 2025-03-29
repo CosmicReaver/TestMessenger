@@ -2,7 +2,7 @@ import socket
 import os
 import threading
 import tkinter as tk
-from tkinter import scrolledtext, simpledialog, filedialog, messagebox, ttk
+from tkinter import scrolledtext, filedialog, messagebox, ttk
 import time
 from crypto_utils import encrypt_file
 
@@ -11,15 +11,7 @@ PORT = 65432
 BUFFER_SIZE = 4096
 PASSWORD = "strongpassword"  # Encryption key
 client_socket = None
-client_name = ""
 reconnect_attempts = 0  # Track retries
-
-def prompt_name():
-    """Prompt user for a name before connecting to the server."""
-    global client_name
-    client_name = simpledialog.askstring("Client Name", "Enter your name:")
-    if not client_name:
-        client_name = "Anonymous"
 
 def connect_to_server():
     """Attempt to connect to the server, retrying with limits."""
@@ -30,8 +22,8 @@ def connect_to_server():
             client_socket.connect((SERVER_HOST, PORT))
             chat_box.insert(tk.END, "✅ Connected to server!\n", "success")
             
-            # Send the name after connecting
-            client_socket.send(client_name.encode())
+            # Show instruction for first-time users
+            chat_box.insert(tk.END, "ℹ️ Please type and send your name first before chatting.\n", "info")
 
             threading.Thread(target=receive_messages, daemon=True).start()
             reconnect_attempts = 0  # Reset on success
@@ -59,13 +51,13 @@ def receive_messages():
             connect_to_server()
             break
 
-def send_message():
+def send_message(event=None):
     """Send a text message to the server."""
     message = message_entry.get().strip()
     if message and client_socket:
         timestamp = time.strftime("[%H:%M:%S] ")
         chat_box.insert(tk.END, f"{timestamp}You: {message}\n", "self")
-        client_socket.send(f"MSG:{timestamp}{client_name}: {message}".encode())
+        client_socket.send(f"MSG:{timestamp}{message}".encode())
         message_entry.delete(0, tk.END)
 
 # GUI Setup
@@ -84,12 +76,11 @@ chat_box.tag_config("client", foreground="black")
 
 message_entry = tk.Entry(root, width=50)
 message_entry.pack(pady=5)
+message_entry.bind("<Return>", send_message)  # Pressing Enter sends the message
 
 send_button = tk.Button(root, text="Send", command=send_message, width=20, bg="#4CAF50", fg="white")
 send_button.pack(pady=5)
 
-# First, prompt for the name before connecting
-prompt_name()
 connect_to_server()
 
 root.mainloop()
