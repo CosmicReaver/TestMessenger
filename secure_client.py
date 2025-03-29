@@ -16,12 +16,18 @@ reconnect_attempts = 0  # Track retries
 
 def connect_to_server():
     """Attempt to connect to the server, retrying with limits."""
-    global client_socket, reconnect_attempts
+    global client_socket, reconnect_attempts, client_name
     while reconnect_attempts < 5:  # Retry up to 5 times
         try:
             client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client_socket.connect((SERVER_HOST, PORT))
             chat_box.insert(tk.END, "✅ Connected to server!\n", "success")
+            
+            # Prompt for name after connection
+            client_name = simpledialog.askstring("Client Name", "Enter your name:")
+            if not client_name:
+                client_name = "Anonymous"
+            
             client_socket.send(client_name.encode())
             threading.Thread(target=receive_messages, daemon=True).start()
             reconnect_attempts = 0  # Reset on success
@@ -58,15 +64,25 @@ def send_message():
         client_socket.send(f"MSG:{timestamp}{client_name}: {message}".encode())
         message_entry.delete(0, tk.END)
 
-def send_file():
-    """Encrypt and send a file to the server with progress."""
-    filename = filedialog.askopenfilename()
-    if not filename or not client_socket:
-        return
+# GUI Setup
+root = tk.Tk()
+root.title("Secure Chat Client")
+root.geometry("500x500")
+root.configure(bg="#f0f0f0")
 
-    encrypted_file = filename + ".enc"
-    encrypt_file(filename, encrypted_file, PASSWORD)
-    file_size = os.path.getsize(encrypted_file)
+chat_box = scrolledtext.ScrolledText(root, width=60, height=20, state=tk.NORMAL, wrap=tk.WORD)
+chat_box.pack(pady=10, padx=10)
+chat_box.tag_config("info", foreground="blue")
+chat_box.tag_config("success", foreground="darkgreen")
+chat_box.tag_config("error", foreground="red")
+chat_box.tag_config("self", foreground="black", font=("Arial", 10, "bold"))
+chat_box.tag_config("client", foreground="black")
 
-    try:
-        client_socket.send(f"FILE:{os.path.basename(encrypted_file)}:{file_size}".encode())
+message_entry = tk.Entry(root, width=50)
+message_entry.pack(pady=5)
+
+send_button = tk.Button(root, text="Send", command=send_message, width=20, bg="#4CAF50", fg="white")
+send_button.pack(pady=5)
+
+connect_to_server()
+root.mainloop()
