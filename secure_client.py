@@ -1,39 +1,31 @@
 import socket
-import os
 import threading
 import tkinter as tk
-from tkinter import scrolledtext, filedialog, messagebox
+from tkinter import scrolledtext
 import time
 
-SERVER_HOST = '192.168.50.191'  # Default server IP
+# Server Configuration
+SERVER_HOST = '192.168.50.191'  # Replace with actual server IP
 PORT = 65432
-BUFFER_SIZE = 4096
-PASSWORD = "strongpassword"  # Encryption key
 client_socket = None
-reconnect_attempts = 0  # Track retries
+client_name = None  # Store the name after user sends it
 
 def connect_to_server():
-    """Attempt to connect to the server, retrying with limits."""
-    global client_socket, reconnect_attempts
-    while reconnect_attempts < 5:  # Retry up to 5 times
-        try:
-            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_socket.connect((SERVER_HOST, PORT))
-            chat_box.insert(tk.END, "✅ Connected to server!\n", "success")
-            chat_box.insert(tk.END, "ℹ️ Type your name and send it as your first message.\n", "info")
+    """Attempt to connect to the server."""
+    global client_socket
+    try:
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect((SERVER_HOST, PORT))
+        chat_box.insert(tk.END, "✅ Connected to server!\n", "success")
+        chat_box.insert(tk.END, "ℹ️ Type your name and send it as your first message.\n", "info")
 
-            threading.Thread(target=receive_messages, daemon=True).start()
-            reconnect_attempts = 0  # Reset on success
-            return
-        except Exception as e:
-            reconnect_attempts += 1
-            time.sleep(3)  # Retry delay
-            chat_box.insert(tk.END, f"⚠️ Connection failed. Retrying... ({reconnect_attempts}/5)\n", "error")
-    
-    chat_box.insert(tk.END, "❌ Could not connect to server. Check your network.\n", "error")
+        threading.Thread(target=receive_messages, daemon=True).start()
+    except Exception as e:
+        chat_box.insert(tk.END, f"❌ Could not connect to server. Check your network.\n", "error")
 
 def receive_messages():
     """Handle incoming messages from the server."""
+    global client_name
     while True:
         try:
             msg = client_socket.recv(1024).decode()
@@ -42,20 +34,24 @@ def receive_messages():
             if msg.startswith("MSG:"):
                 chat_box.insert(tk.END, f"{msg[4:]}\n", "client")
             elif msg.startswith("FILE:"):
-                _, filename, file_size = msg.split(":")
-                receive_file(filename, int(file_size))
+                chat_box.insert(tk.END, f"📁 Received a file: {msg[5:]}\n", "info")
         except:
-            chat_box.insert(tk.END, "❌ Disconnected from server! Attempting to reconnect...\n", "error")
-            connect_to_server()
+            chat_box.insert(tk.END, "❌ Disconnected from server! Reconnect needed.\n", "error")
             break
 
 def send_message(event=None):
-    """Send a text message to the server (triggered by button or Enter key)."""
+    """Send a text message to the server when Enter is pressed or button is clicked."""
+    global client_name
     message = message_entry.get().strip()
     if message and client_socket:
-        timestamp = time.strftime("[%H:%M:%S] ")
-        chat_box.insert(tk.END, f"{timestamp}You: {message}\n", "self")
-        client_socket.send(f"MSG:{timestamp}{message}".encode())
+        if client_name is None:  
+            client_name = message  # First message becomes the user's name
+            chat_box.insert(tk.END, f"✅ Name set: {client_name}\n", "success")
+        else:
+            timestamp = time.strftime("[%H:%M:%S] ")
+            chat_box.insert(tk.END, f"{timestamp}You: {message}\n", "self")
+            client_socket.send(f"MSG:{timestamp}{client_name}: {message}".encode())
+        
         message_entry.delete(0, tk.END)
 
 # GUI Setup
