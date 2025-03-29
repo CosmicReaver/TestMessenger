@@ -1,124 +1,138 @@
-import subprocess
-import requests
+import socket
 import os
+import threading
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import scrolledtext, filedialog, messagebox
+import time
 
-# 🔹 URLs for hosted files
-UPDATE_URL = "https://raw.githubusercontent.com/CosmicReaver/TestMessenger/main/secure_client.py"
-VERSION_URL = "https://raw.githubusercontent.com/CosmicReaver/TestMessenger/main/version.txt"
-LOCAL_VERSION_FILE = "version.txt"
-PYTHON_SCRIPT = os.path.join(os.getcwd(), "secure_client.py")
+SERVER_HOST = '192.168.50.191'  # Default server IP
+PORT = 65432
+BUFFER_SIZE = 4096
+client_socket = None
+client_name = None
+reconnect_attempts = 0  # Track retries
 
-# GUI Updater Class
-class UpdaterApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("App Updater")
-        self.root.geometry("350x200")
-        self.root.resizable(False, False)
-
-        # Title
-        tk.Label(root, text="🔄 App Updater", font=("Arial", 14, "bold")).pack(pady=10)
-
-        # Status Label
-        self.status_label = tk.Label(root, text="Checking for updates...", font=("Arial", 10))
-        self.status_label.pack()
-
-        # Progress Bar
-        self.progress = ttk.Progressbar(root, length=300, mode="determinate")
-        self.progress.pack(pady=10)
-
-        # Buttons
-        self.check_button = tk.Button(root, text="Check for Updates", command=self.check_for_update)
-        self.check_button.pack(pady=5)
-
-        self.update_button = tk.Button(root, text="Update Now", command=self.download_update, state=tk.DISABLED)
-        self.update_button.pack(pady=5)
-
-        # Auto-check updates on start
-        self.check_for_update()
-
-    def get_local_version(self):
-        """Reads the local version number."""
-        if os.path.exists(LOCAL_VERSION_FILE):
-            with open(LOCAL_VERSION_FILE, "r") as f:
-                return f.read().strip()
-        return "0.0.0"
-
-    def check_for_update(self):
-        """Checks for updates and enables the update button if needed."""
+def connect_to_server():
+    """Attempt to connect to the server, retrying with limits."""
+    global client_socket, reconnect_attempts
+    while reconnect_attempts < 5:  # Retry up to 5 times
         try:
-            response = requests.get(VERSION_URL, timeout=5)
-            response.raise_for_status()
-            latest_version = response.text.strip()
-            local_version = self.get_local_version()
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client_socket.connect((SERVER_HOST, PORT))
+            chat_box.insert(tk.END, "✅ Connected to server!\n", "success")
+            chat_box.insert(tk.END, "📢 Type your NAME as the first message!\n", "info")
 
-            if latest_version > local_version:
-                self.status_label.config(text=f"🔔 New version available: {latest_version}")
-                self.update_button.config(state=tk.NORMAL)
-            else:
-                self.status_label.config(text="✅ You have the latest version")
-                self.update_button.config(state=tk.DISABLED)
-                self.root.after(1000, self.launch_application)
+            threading.Thread(target=receive_messages, daemon=True).start()
+            reconnect_attempts = 0  # Reset on success
+            return
+        except Exception:
+            reconnect_attempts += 1
+            time.sleep(3)  # Retry delay
+            chat_box.insert(tk.END, f"⚠️ Connection failed. Retrying... ({reconnect_attempts}/5)\n", "error")
+    chat_box.insert(tk.END, "❌ Could not connect to server. Check your network.\n", "error")
 
-        except requests.RequestException as e:
-            self.status_label.config(text="⚠️ Failed to check updates")
-            messagebox.showerror("Update Error", f"Could not check for updates.\n{e}")
-            self.root.after(1000, self.launch_application)
-
-    def download_update(self):
-        """Downloads the update, replaces the old file, and auto-launches the app."""
-        self.status_label.config(text="Downloading update...")
-        self.progress["value"] = 0
-        self.root.update()
-
+def receive_messages():
+    """Handle incoming messages from the server."""
+    while True:
         try:
-            response = requests.get(UPDATE_URL, stream=True, timeout=10)
-            response.raise_for_status()
-            total_size = int(response.headers.get("content-length", 0))
-            downloaded_size = 0
+            msg = client_socket.recv(1024).decode()
+            if not msg:
+                break
+            if msg.startswith("MSG:"):
+                chat_box.insert(tk.END, f"{msg[4:]}\n", "client")
+            elif msg.startswith("FILE:"):
+                _, filename, file_size = msg.split(":")
+                receive_file(filename, int(file_size))
+        except:
+            chat_box.insert(tk.END, "❌ Disconnected from server! Attempting to reconnect...\n", "error")
+            connect_to_server()
+            break
 
-            with open(PYTHON_SCRIPT, "wb") as f:
-                for chunk in response.iter_content(chunk_size=1024):
-                    if chunk:
-                        f.write(chunk)
-                        downloaded_size += len(chunk)
-                        self.progress["value"] = (downloaded_size / total_size) * 100
-                        self.root.update()
+def send_message(event=None):
+    """Send a text message to the server."""
+    global client_name
+    message = message_entry.get().strip()
+    
+    if not message or not client_socket:
+        return
+    
+    if client_name is None:
+        # First message should be the name
+        client_name = message
+        chat_box.insert(tk.END, f"🆔 Name set: {client_name}\n", "success")
+    else:
+        # Normal message sending
+        timestamp = time.strftime("[%H:%M:%S] ")
+        chat_box.insert(tk.END, f"{timestamp}You: {message}\n", "self")
+        client_socket.send(f"MSG:{timestamp}{client_name}: {message}".encode())
 
-            # Fetch latest version number and update local version file
-            latest_version = requests.get(VERSION_URL, timeout=5).text.strip()
-            with open(LOCAL_VERSION_FILE, "w") as f:
-                f.write(latest_version)
+    message_entry.delete(0, tk.END)
 
-            self.status_label.config(text="✅ Update successful!")
-            messagebox.showinfo("Update Complete", "The application has been updated successfully.")
+def send_file():
+    """Send a file to the server."""
+    file_path = filedialog.askopenfilename()
+    if not file_path or not client_socket or not client_name:
+        return
 
-            # 🚀 Auto-launch the updated Python script
-            self.launch_application()
+    try:
+        file_size = os.path.getsize(file_path)
+        file_name = os.path.basename(file_path)
+        client_socket.send(f"FILE:{file_name}:{file_size}".encode())
 
-        except requests.RequestException as e:
-            self.status_label.config(text="⚠️ Update failed!")
-            messagebox.showerror("Download Error", f"Could not download the update.\n{e}")
-            self.launch_application()
+        with open(file_path, "rb") as f:
+            while chunk := f.read(BUFFER_SIZE):
+                client_socket.send(chunk)
 
-    def launch_application(self):
-        """Launches the main Python script and closes the updater."""
-        script_path = os.path.abspath(PYTHON_SCRIPT)
-        if os.path.exists(script_path):
-            self.status_label.config(text="🚀 Launching application...")
-            self.root.update()
-            try:
-                subprocess.Popen(["python", script_path], shell=True)
-            except Exception as e:
-                messagebox.showerror("Launch Error", f"Could not launch the application.\n{e}")
-            self.root.quit()
-        else:
-            messagebox.showerror("Launch Error", f"Could not find the application script:\n{script_path}")
+        chat_box.insert(tk.END, f"📂 File Sent: {file_name}\n", "success")
+    except Exception as e:
+        chat_box.insert(tk.END, f"❌ File Send Failed: {e}\n", "error")
 
-# Run the GUI
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = UpdaterApp(root)
-    root.mainloop()
+def receive_file(filename, file_size):
+    """Receive a file from the server."""
+    save_path = filedialog.asksaveasfilename(initialfile=filename)
+    if not save_path:
+        return
+
+    try:
+        with open(save_path, "wb") as f:
+            received_size = 0
+            while received_size < file_size:
+                data = client_socket.recv(BUFFER_SIZE)
+                if not data:
+                    break
+                f.write(data)
+                received_size += len(data)
+
+        chat_box.insert(tk.END, f"📥 File Received: {filename}\n", "success")
+    except Exception as e:
+        chat_box.insert(tk.END, f"❌ File Receive Failed: {e}\n", "error")
+
+# GUI Setup
+root = tk.Tk()
+root.title("Secure Chat Client")
+root.geometry("500x500")
+root.configure(bg="#f0f0f0")
+
+chat_box = scrolledtext.ScrolledText(root, width=60, height=20, state=tk.NORMAL, wrap=tk.WORD)
+chat_box.pack(pady=10, padx=10)
+chat_box.tag_config("info", foreground="blue")
+chat_box.tag_config("success", foreground="darkgreen")
+chat_box.tag_config("error", foreground="red")
+chat_box.tag_config("self", foreground="black", font=("Arial", 10, "bold"))
+chat_box.tag_config("client", foreground="black")
+
+message_entry = tk.Entry(root, width=50)
+message_entry.pack(pady=5)
+message_entry.bind("<Return>", send_message)  # Pressing Enter sends message
+
+button_frame = tk.Frame(root)
+button_frame.pack(pady=5)
+
+send_button = tk.Button(button_frame, text="Send", command=send_message, width=15, bg="#4CAF50", fg="white")
+send_button.grid(row=0, column=0, padx=5)
+
+file_button = tk.Button(button_frame, text="Send File", command=send_file, width=15, bg="#2196F3", fg="white")
+file_button.grid(row=0, column=1, padx=5)
+
+connect_to_server()
+root.mainloop()
