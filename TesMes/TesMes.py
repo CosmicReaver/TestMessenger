@@ -2,7 +2,7 @@ import subprocess
 import requests
 import os
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox
 
 # 🔹 URLs for hosted files
 UPDATE_URL = "https://raw.githubusercontent.com/CosmicReaver/TestMessenger/main/TestMessenger.exe"
@@ -60,12 +60,13 @@ class UpdaterApp:
             else:
                 self.status_label.config(text="✅ You have the latest version")
                 self.update_button.config(state=tk.DISABLED)
+                # 🚀 Auto-launch the application if no update is needed
                 self.root.after(1000, self.launch_application)
 
         except requests.RequestException as e:
             self.status_label.config(text="⚠️ Failed to check updates")
             messagebox.showerror("Update Error", f"Could not check for updates.\n{e}")
-            self.root.after(1000, self.launch_application)
+            self.root.after(1000, self.launch_application)  # Still launch the app
 
     def download_update(self):
         """Downloads the update, replaces the old file, and auto-launches the app."""
@@ -79,8 +80,9 @@ class UpdaterApp:
             total_size = int(response.headers.get("content-length", 0))
             downloaded_size = 0
 
+            # Ensure the file is writable
             if os.path.exists(APP_EXECUTABLE):
-                os.chmod(APP_EXECUTABLE, 0o777)  # Ensure file permissions
+                os.remove(APP_EXECUTABLE)  # Remove old file before writing
 
             with open(APP_EXECUTABLE, "wb") as f:
                 for chunk in response.iter_content(chunk_size=1024):
@@ -90,34 +92,30 @@ class UpdaterApp:
                         self.progress["value"] = (downloaded_size / total_size) * 100
                         self.root.update()
 
+            # Fetch latest version number and update local version file
             latest_version = requests.get(VERSION_URL, timeout=5).text.strip()
             with open(LOCAL_VERSION_FILE, "w") as f:
                 f.write(latest_version)
 
             self.status_label.config(text="✅ Update successful!")
             messagebox.showinfo("Update Complete", "The application has been updated successfully.")
+
+            # 🚀 Auto-launch the updated application
             self.launch_application()
 
         except requests.RequestException as e:
             self.status_label.config(text="⚠️ Update failed!")
             messagebox.showerror("Download Error", f"Could not download the update.\n{e}")
-            self.launch_application()
+            self.launch_application()  # 🚀 Still launch the app even if update fails
 
     def launch_application(self):
-        """Prompt for name before launching the main application."""
+        """Launches the main application and closes the updater."""
         exe_path = os.path.abspath(APP_EXECUTABLE)
-
         if os.path.exists(exe_path):
-            user_name = simpledialog.askstring("Enter Name", "Please enter your name:")
-
-            if user_name:
-                self.status_label.config(text=f"🚀 Launching {user_name}'s application...")
-                self.root.update()
-                
-                subprocess.Popen([exe_path, user_name], shell=True)
-                self.root.quit()
-            else:
-                messagebox.showwarning("Name Required", "You must enter a name to proceed!")
+            self.status_label.config(text="🚀 Launching application...")
+            self.root.update()
+            subprocess.Popen([exe_path], shell=True)
+            self.root.quit()
         else:
             messagebox.showerror("Launch Error", f"Could not find the application at:\n{exe_path}")
 
