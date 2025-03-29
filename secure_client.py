@@ -144,4 +144,9 @@ file_button = tk.Button(root, text="Send File", command=send_file, width=20, bg=
 file_button.pack(pady=5)
 
 change_server_button = tk.Button(root, text="Change Server", command=update_server_address, width=20, bg="#FF9800", fg="white")
-change_server_button.pack(pady=5
+change_server_button.pack(pady=5)
+
+# Start connection to server
+threading.Thread(target=connect_to_server, daemon=True).start()
+
+root.mainloop()
