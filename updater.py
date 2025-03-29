@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 # 🔹 URLs for hosted files
-UPDATE_URL = "https://github.com/CosmicReaver/TestMessenger/releases/latest/download/TestMessenger.exe"
+UPDATE_URL = "https://raw.githubusercontent.com/CosmicReaver/TestMessenger/main/TestMessenger.exe"
 VERSION_URL = "https://raw.githubusercontent.com/CosmicReaver/TestMessenger/main/version.txt"
 LOCAL_VERSION_FILE = "version.txt"
 APP_EXECUTABLE = os.path.join(os.getcwd(), "TestMessenger.exe")
