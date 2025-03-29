@@ -14,21 +14,25 @@ client_socket = None
 client_name = ""
 reconnect_attempts = 0  # Track retries
 
+def prompt_name():
+    """Prompt user for a name before connecting to the server."""
+    global client_name
+    client_name = simpledialog.askstring("Client Name", "Enter your name:")
+    if not client_name:
+        client_name = "Anonymous"
+
 def connect_to_server():
     """Attempt to connect to the server, retrying with limits."""
-    global client_socket, reconnect_attempts, client_name
+    global client_socket, reconnect_attempts
     while reconnect_attempts < 5:  # Retry up to 5 times
         try:
             client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client_socket.connect((SERVER_HOST, PORT))
             chat_box.insert(tk.END, "✅ Connected to server!\n", "success")
             
-            # Prompt for name after connection
-            client_name = simpledialog.askstring("Client Name", "Enter your name:")
-            if not client_name:
-                client_name = "Anonymous"
-            
+            # Send the name after connecting
             client_socket.send(client_name.encode())
+
             threading.Thread(target=receive_messages, daemon=True).start()
             reconnect_attempts = 0  # Reset on success
             return
@@ -84,5 +88,8 @@ message_entry.pack(pady=5)
 send_button = tk.Button(root, text="Send", command=send_message, width=20, bg="#4CAF50", fg="white")
 send_button.pack(pady=5)
 
+# First, prompt for the name before connecting
+prompt_name()
 connect_to_server()
+
 root.mainloop()
